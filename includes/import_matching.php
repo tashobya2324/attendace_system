@@ -65,3 +65,34 @@ function match_staff_by_name(string $rawName, array $activeStaff): array
 
     return $best;
 }
+
+/**
+ * Same idea as match_staff_by_name(), for matching an extracted department
+ * name (from a staff-list document) against the district's actual
+ * department list — used by the mass staff-import pipeline.
+ *
+ * @param array $departments each item: ['id'=>int, 'name'=>string]
+ * @return array{department_id: ?int, score: float}
+ */
+function match_department_by_name(?string $rawDept, array $departments): array
+{
+    if ($rawDept === null || trim($rawDept) === '') {
+        return ['department_id' => null, 'score' => 0.0];
+    }
+    $needle = normalize_name_for_match($rawDept);
+    $best = ['department_id' => null, 'score' => 0.0];
+
+    foreach ($departments as $d) {
+        $hay = normalize_name_for_match($d['name']);
+        if ($hay === '') continue;
+        similar_text($needle, $hay, $pct);
+        if ($pct > $best['score']) {
+            $best = ['department_id' => (int) $d['id'], 'score' => round($pct, 1)];
+        }
+    }
+
+    if ($best['score'] < MATCH_CONFIDENT_THRESHOLD) {
+        $best['department_id'] = null;
+    }
+    return $best;
+}

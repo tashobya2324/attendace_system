@@ -1,9 +1,12 @@
 # Secrets — never commit real API keys/credentials
 config/secrets.php
 
-# Uploaded register photos may contain real staff names/PII — keep local only
+# Uploaded register photos / staff-list documents may contain real staff
+# names/PII — keep local only
 storage/attendance_imports/*
 !storage/attendance_imports/.gitkeep
+storage/staff_imports/*
+!storage/staff_imports/.gitkeep
 
 # OS/editor noise
 .DS_Store

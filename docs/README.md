@@ -9,6 +9,7 @@
 | [05-Installation-Guide.md](05-Installation-Guide.md) | Setup, seeding, configuration, and production hardening steps |
 | [06-Test-Plan-and-Results.md](06-Test-Plan-and-Results.md) | What was tested, results, and defects found and fixed |
 | [07-Software-Requirements-Specification.md](07-Software-Requirements-Specification.md) | Formal SRS — functional/non-functional requirements, use cases, traceability matrix |
+| [08-AI-Execution-Flow.md](08-AI-Execution-Flow.md) | Exactly how the AI executes — the local analytical layer (stats/flagging/forecast) vs. the Gemini vision pipeline for register backfill, step by step |
 
 For a quick project summary and local run instructions, see the
 [top-level README](../README.md).

@@ -25,7 +25,11 @@ $rows->execute();
 $importRows = $rows->get_result()->fetch_all(MYSQLI_ASSOC);
 $rows->close();
 
-$activeStaff = $conn->query("SELECT id, full_name, staff_no FROM staff WHERE status='active' ORDER BY full_name")->fetch_all(MYSQLI_ASSOC);
+$activeStaff = $conn->query(
+    "SELECT s.id, s.full_name, s.staff_no, d.name AS dept
+     FROM staff s JOIN departments d ON d.id = s.department_id
+     WHERE s.status='active' ORDER BY s.full_name"
+)->fetch_all(MYSQLI_ASSOC);
 
 // Which staff already have an attendance record for this date — flagged so
 // HR can see they'd be overwriting a live entry before they commit.
@@ -37,16 +41,20 @@ $r = $exStmt->get_result();
 while ($row = $r->fetch_assoc()) { $existing[(int) $row['staff_id']] = true; }
 $exStmt->close();
 
-$dayStart = get_setting('day_start_time', '08:00:00');
-$grace = (int) get_setting('grace_minutes', 15);
-$startMinutes = ((int) substr($dayStart, 0, 2)) * 60 + (int) substr($dayStart, 3, 2);
+// Import-specific defaults (deliberately separate from the live register's
+// settings-driven day_start_time/grace_minutes) — a transcribed paper
+// register is judged by a flat 08:30 late cutoff, and any row missing a
+// check-out time is assumed to be the standard 17:00 close of business
+// unless HR overrides it.
+const IMPORT_LATE_CUTOFF_MINUTES = 8 * 60 + 30; // 08:30
+const IMPORT_AUTO_CHECKOUT = '17:00';
 
-function guess_status(?string $checkIn, ?string $remarks, int $startMinutes, int $grace): string
+function guess_status(?string $checkIn, ?string $remarks): string
 {
     if ($checkIn && preg_match('/^\d{2}:\d{2}/', $checkIn)) {
         [$h, $m] = array_map('intval', explode(':', substr($checkIn, 0, 5)));
         $arrival = $h * 60 + $m;
-        return ($arrival - ($startMinutes + $grace)) > 0 ? 'late' : 'present';
+        return $arrival > IMPORT_LATE_CUTOFF_MINUTES ? 'late' : 'present';
     }
     $r = strtolower((string) $remarks);
     if (str_contains($r, 'leave')) return 'leave';
@@ -92,6 +100,12 @@ require __DIR__ . '/../includes/header.php';
   </div>
 
   <div class="bg-white border border-gray-200 rounded-lg p-5">
+    <?php if (!empty($importRows)): ?>
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <p class="text-xs text-gray-500">Rows with no check-out default to <strong>17:00</strong>. Late is anything after <strong>08:30</strong>.</p>
+      <button type="button" id="setAutoCheckoutBtn" class="text-xs font-semibold text-brand-600 hover:underline">Set auto check-out time&hellip;</button>
+    </div>
+    <?php endif; ?>
     <div class="overflow-x-auto">
       <table class="w-full text-sm min-w-[900px]" id="reviewTable">
         <thead class="text-[10.5px] uppercase tracking-wide text-gray-400">
@@ -99,20 +113,25 @@ require __DIR__ . '/../includes/header.php';
             <th class="text-left px-2 py-2 w-8">Use</th>
             <th class="text-left px-2 py-2">As written</th>
             <th class="text-left px-2 py-2">Matched staff member</th>
+            <th class="text-left px-2 py-2">Department</th>
             <th class="text-left px-2 py-2">Status</th>
             <th class="text-left px-2 py-2">In</th>
             <th class="text-left px-2 py-2">Out</th>
-            <th class="text-left px-2 py-2">Remarks</th>
+            <th class="px-2 py-2 w-8"></th>
           </tr>
         </thead>
         <tbody>
         <?php foreach ($importRows as $row):
             $checkIn = ($row['raw_check_in'] && preg_match('/^\d{2}:\d{2}/', $row['raw_check_in'])) ? substr($row['raw_check_in'], 0, 5) : '';
-            $checkOut = ($row['raw_check_out'] && preg_match('/^\d{2}:\d{2}/', $row['raw_check_out'])) ? substr($row['raw_check_out'], 0, 5) : '';
-            $status = guess_status($row['raw_check_in'], $row['raw_remarks'], $startMinutes, $grace);
+            $rawCheckOut = ($row['raw_check_out'] && preg_match('/^\d{2}:\d{2}/', $row['raw_check_out'])) ? substr($row['raw_check_out'], 0, 5) : '';
+            $checkOut = $rawCheckOut ?: IMPORT_AUTO_CHECKOUT;
+            $isAutoCheckout = $rawCheckOut === '';
+            $status = guess_status($row['raw_check_in'], $row['raw_remarks']);
             $matchedId = $row['matched_staff_id'];
             $confident = $matchedId && $row['match_confidence'] >= 72;
             $hasConflict = $matchedId && isset($existing[(int) $matchedId]);
+            $matchedDept = '';
+            foreach ($activeStaff as $s) { if ((int) $s['id'] === (int) $matchedId) { $matchedDept = $s['dept']; break; } }
         ?>
           <tr class="border-t border-gray-100 import-row" data-row-id="<?= $row['id'] ?>">
             <td class="px-2 py-2 align-top">
@@ -126,17 +145,19 @@ require __DIR__ . '/../includes/header.php';
               <?php if ($hasConflict): ?>
                 <div class="text-[11px] mt-0.5 text-red-600">Already has a record for this date — will be overwritten</div>
               <?php endif; ?>
+              <input type="hidden" class="remarksInput" value="<?= htmlspecialchars($row['raw_remarks'] ?? '') ?>">
             </td>
             <td class="px-2 py-2 align-top">
               <select class="staffSelect w-56 rounded-md border border-gray-300 px-2 py-1.5 text-xs">
                 <option value="">&mdash; select staff &mdash;</option>
                 <?php foreach ($activeStaff as $s): ?>
-                  <option value="<?= $s['id'] ?>" <?= ((int) $matchedId === (int) $s['id']) ? 'selected' : '' ?>>
+                  <option value="<?= $s['id'] ?>" data-dept="<?= htmlspecialchars($s['dept']) ?>" <?= ((int) $matchedId === (int) $s['id']) ? 'selected' : '' ?>>
                     <?= htmlspecialchars($s['full_name']) ?> (<?= htmlspecialchars($s['staff_no']) ?>)
                   </option>
                 <?php endforeach; ?>
               </select>
             </td>
+            <td class="px-2 py-2 align-top deptCell text-gray-600"><?= htmlspecialchars($matchedDept) ?></td>
             <td class="px-2 py-2 align-top">
               <select class="statusSelect rounded-md border border-gray-300 px-2 py-1.5 text-xs">
                 <?php foreach (['present' => 'Present', 'late' => 'Late', 'absent' => 'Absent', 'leave' => 'On leave'] as $val => $label): ?>
@@ -145,8 +166,10 @@ require __DIR__ . '/../includes/header.php';
               </select>
             </td>
             <td class="px-2 py-2 align-top"><input type="time" class="checkInInput rounded-md border border-gray-300 px-2 py-1.5 text-xs w-28" value="<?= htmlspecialchars($checkIn) ?>"></td>
-            <td class="px-2 py-2 align-top"><input type="time" class="checkOutInput rounded-md border border-gray-300 px-2 py-1.5 text-xs w-28" value="<?= htmlspecialchars($checkOut) ?>"></td>
-            <td class="px-2 py-2 align-top"><input type="text" class="remarksInput rounded-md border border-gray-300 px-2 py-1.5 text-xs w-40" value="<?= htmlspecialchars($row['raw_remarks'] ?? '') ?>"></td>
+            <td class="px-2 py-2 align-top"><input type="time" class="checkOutInput rounded-md border border-gray-300 px-2 py-1.5 text-xs w-28" data-auto="<?= $isAutoCheckout ? 'true' : 'false' ?>" value="<?= htmlspecialchars($checkOut) ?>"></td>
+            <td class="px-2 py-2 align-top">
+              <button type="button" class="deleteRowBtn text-gray-400 hover:text-red-600" title="Remove this row from the preview">&times;</button>
+            </td>
           </tr>
         <?php endforeach; ?>
         </tbody>
@@ -166,6 +189,42 @@ require __DIR__ . '/../includes/header.php';
 window.CSRF_TOKEN = <?= json_encode($token) ?>;
 window.BATCH_ID = <?= (int) $batchId ?>;
 window.REGISTER_DATE = <?= json_encode($batch['register_date']) ?>;
+
+// Department column follows whichever staff member is currently selected.
+document.querySelectorAll('.staffSelect').forEach(function (sel) {
+  sel.addEventListener('change', function () {
+    var opt = sel.options[sel.selectedIndex];
+    var tr = sel.closest('.import-row');
+    tr.querySelector('.deptCell').textContent = opt ? (opt.getAttribute('data-dept') || '') : '';
+  });
+});
+
+// A checkout time the AI didn't extract is auto-filled with the district's
+// standard close-of-business time; editing it by hand opts that row out of
+// any later bulk change from the button below.
+document.querySelectorAll('.checkOutInput').forEach(function (inp) {
+  inp.addEventListener('input', function () { inp.setAttribute('data-auto', 'false'); });
+});
+
+document.getElementById('setAutoCheckoutBtn')?.addEventListener('click', function () {
+  var current = document.querySelector('.checkOutInput[data-auto="true"]');
+  var time = prompt('Auto check-out time for rows with no recorded check-out (HH:MM):', current ? current.value : '17:00');
+  if (!time || !/^\d{2}:\d{2}$/.test(time)) return;
+  document.querySelectorAll('.checkOutInput[data-auto="true"]').forEach(function (inp) { inp.value = time; });
+});
+
+document.querySelectorAll('.deleteRowBtn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var tr = btn.closest('.import-row');
+    if (!confirm('Remove this row from the preview? It will not be committed.')) return;
+    var body = new URLSearchParams();
+    body.set('csrf', window.CSRF_TOKEN);
+    body.set('row_id', tr.getAttribute('data-row-id'));
+    fetch('api/import_delete_row.php', { method: 'POST', body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (data) { if (!data.error) tr.remove(); });
+  });
+});
 
 document.getElementById('commitBtn')?.addEventListener('click', function () {
   var btn = this, msg = document.getElementById('commitMsg');

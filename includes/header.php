@@ -60,6 +60,7 @@ $districtName = get_setting('district_name', 'Mbarara District Local Government'
           $navItems[] = ['register.php', 'Daily Register'];
           $navItems[] = ['import.php', 'Import Register'];
           $navItems[] = ['staff.php', 'Staff'];
+          $navItems[] = ['staff_import.php', 'Mass Staff Entry'];
           $navItems[] = ['departments.php', 'Departments'];
       }
       $navItems[] = ['reports.php', 'Monthly Report'];
