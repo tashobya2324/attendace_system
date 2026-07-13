@@ -119,3 +119,4 @@ structured data either way.
 - Serve over HTTPS; set `session.cookie_secure` once you do.
 - The `config/database.php` credentials should come from environment
   variables in production, not hardcoded.
+Access it here: http://localhost/attendace_system_LDG/public/index.php
