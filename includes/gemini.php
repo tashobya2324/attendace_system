@@ -202,3 +202,83 @@ function gemini_extract_staff_list(?string $filePath, ?string $mimeType, ?string
     }
     return ['ok' => true, 'rows' => $result['data']['rows'], 'raw' => $result['raw'], 'error' => null];
 }
+
+// ============================================================
+// 3. Monthly attendance report -> AI-drafted narrative + insights
+// ============================================================
+
+const GEMINI_REPORT_SCHEMA = [
+    'type' => 'OBJECT',
+    'properties' => [
+        'narrative' => ['type' => 'STRING'],
+        'insights' => ['type' => 'ARRAY', 'items' => ['type' => 'STRING']],
+    ],
+    'required' => ['narrative', 'insights'],
+];
+
+/**
+ * Ask Gemini to draft the CAO-facing narrative memo and the flagged-insight
+ * bullets from the already-computed period statistics. The model never sees
+ * raw attendance rows, only the aggregated figures the deterministic
+ * generator in includes/analysis.php would otherwise use — so this is a
+ * strict "write it up in prose" task, not a data-analysis one, and it fails
+ * safe (caller falls back to the template generator on error).
+ *
+ * @return array{ok:bool, narrative:?string, insights:?array, error:?string}
+ */
+function gemini_generate_report_narrative(array $stats, array $deptStats, array $flagged, array $forecast, string $periodLabel, float $target): array
+{
+    $facts = [
+        'period' => $periodLabel,
+        'district_target_attendance_pct' => $target,
+        'overall' => [
+            'attendance_rate_pct' => $stats['attendanceRate'],
+            'punctuality_rate_pct' => $stats['punctualityRate'],
+            'absenteeism_rate_pct' => $stats['absenteeismRate'],
+            'total_staff' => $stats['totalStaff'],
+            'logged_staff_days' => $stats['total'],
+            'working_days' => $stats['workDays'],
+        ],
+        'departments' => array_map(fn($d) => [
+            'name' => $d['name'],
+            'staff_count' => $d['staff_count'],
+            'attendance_rate_pct' => round($d['rate'] * 100, 1),
+            'punctuality_rate_pct' => round($d['punctuality'] * 100, 1),
+        ], $deptStats),
+        'flagged_staff_count' => count($flagged),
+        'flagged_staff' => array_map(fn($f) => [
+            'name' => $f['name'], 'department' => $f['dept'], 'late_count' => $f['late'], 'absent_count' => $f['absent'],
+        ], array_slice($flagged, 0, 10)),
+        'forecast' => $forecast,
+    ];
+
+    $prompt = <<<PROMPT
+You are drafting a monthly staff attendance report for the Human Resource
+Management Unit of Mbarara District Local Government, addressed to the
+Chief Administrative Officer.
+
+You are given pre-computed attendance statistics as JSON (below) — do not
+invent, recompute, or contradict any figure in it. Use only these numbers.
+
+Write:
+1. "narrative": a formal 3-5 sentence prose memo body (no salutation, no
+   sign-off — those are added by the page template) covering: the headline
+   attendance/punctuality/absenteeism figures versus the district target,
+   which department performed best/worst, how many staff were flagged for
+   policy breaches, and the forecast trend if available. Professional
+   Ugandan public-service register tone.
+2. "insights": 2-4 short scannable bullet observations (each under 25
+   words) a CAO would want called out — e.g. a department trending low, a
+   worsening/improving trend, or a concentration of flagged staff. If
+   nothing notable stands out beyond the narrative, return a single bullet
+   saying so.
+
+Statistics:
+PROMPT . "\n" . json_encode($facts, JSON_PRETTY_PRINT);
+
+    $result = gemini_generate_structured($prompt, GEMINI_REPORT_SCHEMA);
+    if (!$result['ok'] || !isset($result['data']['narrative'], $result['data']['insights'])) {
+        return ['ok' => false, 'narrative' => null, 'insights' => null, 'error' => $result['error'] ?? 'No narrative in the model response.'];
+    }
+    return ['ok' => true, 'narrative' => $result['data']['narrative'], 'insights' => $result['data']['insights'], 'error' => null];
+}

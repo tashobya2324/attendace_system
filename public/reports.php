@@ -24,8 +24,9 @@ $flagged = detect_flagged_staff($year, $month);
 $forecast = forecast_next_month($year, $month);
 $periodLabel = date('F Y', mktime(0, 0, 0, $month, 1, $year));
 
-$narrative = generate_ai_narrative($stats, $deptStats, $flagged, $forecast, $periodLabel);
-$insights = generate_ai_insights($stats, $deptStats, $flagged, $forecast);
+$aiReport = generate_ai_report($stats, $deptStats, $flagged, $forecast, $periodLabel);
+$narrative = $aiReport['narrative'];
+$insights = $aiReport['insights'];
 
 $existingReport = null;
 $stmt = $conn->prepare('SELECT * FROM monthly_reports WHERE report_year=? AND report_month=?');
@@ -202,7 +203,10 @@ require __DIR__ . '/../includes/header.php';
   <strong>From:</strong> Human Resource Management Unit<br>
   <strong>Re:</strong> Staff attendance patterns for <?= $periodLabel ?></p>
   <p><?= htmlspecialchars($narrative) ?></p>
-  <div class="text-xs text-gray-500 mt-4 font-sans">Generated automatically from the daily attendance register on <?= date('j F Y') ?>.</div>
+  <div class="text-xs text-gray-500 mt-4 font-sans">
+    Generated automatically from the daily attendance register on <?= date('j F Y') ?>
+    &mdash; <?= $aiReport['source'] === 'ai' ? 'drafted by Gemini' : 'template-generated (AI unavailable)' ?>.
+  </div>
 </div>
 
 <?php if (in_array($user['role'], ['hr', 'admin'], true)): ?>

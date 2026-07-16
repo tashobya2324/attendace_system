@@ -18,8 +18,9 @@ $deptStats = compute_department_stats($year, $month);
 $flagged = detect_flagged_staff($year, $month);
 $forecast = forecast_next_month($year, $month);
 $periodLabel = date('F Y', mktime(0, 0, 0, $month, 1, $year));
-$narrative = generate_ai_narrative($stats, $deptStats, $flagged, $forecast, $periodLabel);
-$insights = generate_ai_insights($stats, $deptStats, $flagged, $forecast);
+$aiReport = generate_ai_report($stats, $deptStats, $flagged, $forecast, $periodLabel);
+$narrative = $aiReport['narrative'];
+$insights = $aiReport['insights'];
 
 $conn = db();
 $conn->begin_transaction();

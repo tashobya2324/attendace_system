@@ -26,6 +26,9 @@ CREATE TABLE staff (
   full_name VARCHAR(150) NOT NULL,
   designation VARCHAR(120) NOT NULL,
   department_id INT UNSIGNED NOT NULL,
+  job_group VARCHAR(60) DEFAULT NULL,
+  salary_scale VARCHAR(20) DEFAULT NULL,
+  staff_category ENUM('traditional','health') NOT NULL DEFAULT 'traditional',
   phone VARCHAR(30) DEFAULT NULL,
   email VARCHAR(150) DEFAULT NULL,
   status ENUM('active','interdicted','retired','deceased') NOT NULL DEFAULT 'active',
@@ -125,17 +128,24 @@ CREATE TABLE report_flags (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------
--- Seed: departments
+-- Seed: departments (the district's real establishment structure)
 -- ---------------------------------------------------------
 INSERT INTO departments (name) VALUES
-  ('Finance & Administration'),
+  ('Administration'),
+  ('Finance'),
   ('Health Services'),
   ('Education'),
-  ('Works & Technical Services'),
-  ('Community-Based Services'),
-  ('Revenue & Planning'),
-  ('Production & Marketing'),
-  ('Internal Audit');
+  ('Works'),
+  ('Natural Resources'),
+  ('Community Based Services'),
+  ('Production'),
+  ('Planning'),
+  ('Procurement'),
+  ('Audit'),
+  ('Statutory'),
+  ('Council'),
+  ('Water'),
+  ('Trade, Industry and Local Economic Development');
 
 -- ---------------------------------------------------------
 -- Seed: default users (password for both is: password123)

@@ -352,3 +352,29 @@ function generate_ai_insights(array $stats, array $deptStats, array $flagged, ar
 
     return $insights;
 }
+
+/**
+ * Report entry point used by reports.php and api/send_report.php: tries a
+ * real Gemini call first (see includes/gemini.php) and falls back to the
+ * deterministic template generator above if no API key is configured, or
+ * if the call fails or times out — so the report always renders.
+ *
+ * @return array{narrative:string, insights:array, source:'ai'|'template'}
+ */
+function generate_ai_report(array $stats, array $deptStats, array $flagged, array $forecast, string $periodLabel): array
+{
+    if (getenv('GEMINI_API_KEY')) {
+        require_once __DIR__ . '/gemini.php';
+        $target = (float) get_setting('attendance_target_pct', 85);
+        $result = gemini_generate_report_narrative($stats, $deptStats, $flagged, $forecast, $periodLabel, $target);
+        if ($result['ok']) {
+            return ['narrative' => $result['narrative'], 'insights' => $result['insights'], 'source' => 'ai'];
+        }
+    }
+
+    return [
+        'narrative' => generate_ai_narrative($stats, $deptStats, $flagged, $forecast, $periodLabel),
+        'insights' => generate_ai_insights($stats, $deptStats, $flagged, $forecast),
+        'source' => 'template',
+    ];
+}

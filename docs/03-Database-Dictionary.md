@@ -42,10 +42,13 @@ The establishment register.
 | Column | Type | Constraints | Notes |
 |---|---|---|---|
 | `id` | INT UNSIGNED | PK, AUTO_INCREMENT | |
-| `staff_no` | VARCHAR(20) | NOT NULL, UNIQUE | e.g. `MB-0001` |
+| `staff_no` | VARCHAR(20) | NOT NULL, UNIQUE | Public service employee number, e.g. `000000001009300` |
 | `full_name` | VARCHAR(150) | NOT NULL | |
-| `designation` | VARCHAR(120) | NOT NULL | Job title |
+| `designation` | VARCHAR(120) | NOT NULL | Specific job title, e.g. "Senior Accountant" |
 | `department_id` | INT UNSIGNED | NOT NULL, FK → `departments.id` | |
+| `job_group` | VARCHAR(60) | NULL | Establishment rank/grade band, e.g. "Senior Officer", "Assistant Commissioner" |
+| `salary_scale` | VARCHAR(20) | NULL | e.g. `U3 SC`, `U4 LWR` |
+| `staff_category` | ENUM | `traditional` \| `health`, default `traditional` | Distinguishes health-sector cadre staff from the general establishment |
 | `phone` | VARCHAR(30) | NULL | |
 | `email` | VARCHAR(150) | NULL | |
 | `status` | ENUM | `active` \| `interdicted` \| `retired` \| `deceased`, default `active` | Deactivating a staff member sets this to `retired`; only `active` staff appear in the register and reports |
